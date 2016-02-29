@@ -1,8 +1,11 @@
 import sys
+import collections
+
 OPERATORS = ['&&', '~', '=>']
 
-KB =[]
+KB = collections.OrderedDict()
 
+query = []
 
 def process_input(fn):
     file_handle = open(fn, "r")
@@ -11,7 +14,8 @@ def process_input(fn):
 
     for line in file_handle:
         if line_counter == 0:
-            query = line.strip('\n\r')
+            q = line.strip('\n\r')
+            query = pre_parse_facts(q)
             line_counter += 1
             continue
         if line_counter ==1:
@@ -22,23 +26,69 @@ def process_input(fn):
             # Parse the facts here
             fact = line.strip('\n\r')
             # Pre-process line for easier processing
-            fact = '(' + fact + ')'
-            fact = fact.replace('(', ' ( ')
-            fact = fact.replace(')', ' ) ')
-            fact = fact.replace(',', ', ')
-            fact_list = fact.split()
-            fact_list = parse_facts(fact_list)
+            fact_list = pre_parse_facts(fact)
             print fact_list
             input_sentences.append(fact_list)
             continue
     print "File Parsed\n\n\n"
-    # for sen in input_sentences:
-        # print sen
+    for sen in input_sentences:
+        print sen
+
+    construct_KB(input_sentences)
     #     a_clause = convert_list_to_clause(sen)
     #     KB.append(a_clause)
     # print "Final KB\n\n\n"
     # for k in KB:
     #     print k
+
+
+def construct_KB(input_sentences):
+    print "Constructing KB\n\n\n"
+    for sen in input_sentences:
+        if '=>' in sen:
+            implication_pos = sen.index('=>')
+            lhs = sen[:implication_pos]
+            rhs = sen[implication_pos + 1:]
+            KB[rhs[0]] = [rhs[1], lhs]
+        else:
+            var = sen[1:]
+            print var
+            KB[sen[0]] = sen[1:]
+
+    print "Final KB\n\n\n"
+    for k, v in KB.items():
+        print k, ': ', v
+
+    print 'Test\n'
+    if 'Traitor' in KB:
+        items = KB['Traitor']
+        print len(items)
+        # if len is 2 then implication
+        # else it is a fact
+        for i in range(len(items)):
+            # if isinstance(i,list):
+            for j in range(len(items[i])):
+                # check if j is in dict if yes its a function
+                # else its a parameter list
+                print i, ', ', j
+                print items[i][j]
+                if 'z' in items[i][j]:
+                    p = items[i][j].index('z')
+                    items[i][j][p] = 'p'
+                    print 'Success', items[i][j]
+
+
+
+
+
+def pre_parse_facts(fact):
+    fact = '(' + fact + ')'
+    fact = fact.replace('(', ' ( ')
+    fact = fact.replace(')', ' ) ')
+    fact = fact.replace(',', ', ')
+    fact_list = fact.split()
+    fact_list = parse_facts(fact_list)
+    return fact_list
 
 
 def parse_facts(fact_list):
@@ -59,10 +109,10 @@ def parse_facts(fact_list):
 
 
 def main():
-    # file_name = sys.argv[2]
-    # process_input(file_name)
+    file_name = sys.argv[2]
+    process_input(file_name)
 
-    process_input('sample01.txt')
+    # process_input('sample01.txt')
 
 
 if __name__ == '__main__':
