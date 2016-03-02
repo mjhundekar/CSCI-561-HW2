@@ -5,6 +5,8 @@ OPERATORS = ['&&', '=>']
 
 KB = collections.OrderedDict()
 
+fact_list = []
+
 parent_clauses = collections.OrderedDict()
 
 
@@ -66,14 +68,13 @@ class KnowledgeBase:
             else:
                 # create a new entry
                 self.clauses[inside_clause.op] = [main_clause]
-        elif inside_clause.op[0] == '~':
-            self.predicate_index(main_clause, inside_clause.op)
+        # elif inside_clause.op == '~':
+        #     self.predicate_index(main_clause, inside_clause.args[0])
         else:
             # one of the other operators
             # add both its arguments to the dictionary
             self.predicate_index(main_clause, inside_clause.args[0])
             self.predicate_index(main_clause, inside_clause.args[1])
-
 
     def fetch_rules_for_goal(self, goal):
         predicate = self.retrieve_predicate(goal)
@@ -89,6 +90,7 @@ class KnowledgeBase:
             return self.retrieve_predicate(goal.args[0])
 
     def ask(self, query):
+        print "Ask:  ", query
         return fol_bc_ask(self, query)
 
 class Clause:
@@ -130,7 +132,7 @@ class Clause:
             else:
                 return '~' + '(' + str(self.args[0]) + ')'
         else:
-            # binary operator like '&&', '|' or '=>'
+            # binary operator like '&', '|' or '==>'
             # check if argument clauses have logical operators
             str_repn = ''
             if self.args[0].op in OPERATORS:
@@ -143,7 +145,6 @@ class Clause:
             else:
                 str_repn += str(self.args[1])
             return str_repn
-
 
     def __eq__(self, other):
         return isinstance(other, Clause) and self.op == other.op and \
@@ -204,14 +205,13 @@ def convert_to_clause(item):
 
 
 def is_predicate(clause):
-    if clause.op[0] == '~':
-        return True
     return clause.op not in OPERATORS and clause.op[0].isupper()
 
 
 def process_input(fn):
     # global ip_query
     # global KB
+    global fact_list
     test_kb = KnowledgeBase()
     file_handle = open(fn, "r")
     line_counter = 0
@@ -221,6 +221,7 @@ def process_input(fn):
         if line_counter == 0:
             q = line.strip('\n\r')
             query = pre_parse_facts(q)
+            fact_list.append(query)
             i_query = convert_to_clause(query)
 
             print i_query
@@ -236,11 +237,12 @@ def process_input(fn):
             # Parse the facts here
             fact = line.strip('\n\r')
             # Pre-process line for easier processing
-            fact_list = pre_parse_facts(fact)
+            a_fact_list = pre_parse_facts(fact)
             print "Fact List"
             print fact_list
             print "Converting to clause"
-            a_clause = convert_to_clause(fact_list)
+            a_clause = convert_to_clause(a_fact_list)
+            fact_list.append(a_fact_list)
             # test_kb.tell(a_clause)
             input_sentences.append(a_clause)
             continue
@@ -423,32 +425,28 @@ def fol_bc_or(kb, goal, theta):
     possible_rules = kb.fetch_rules_for_goal(goal)
     for rule in possible_rules:
         stdized_rule = standardize_vbls(rule)
-        print stdized_rule
-        if stdized_rule.op == '=>':
-            lhs = stdized_rule.args[0]
-            rhs = stdized_rule.args[1]
-            # lhs, rhs = convert_to_implication(stdized_rule)
-            rhs_unify_try = unify(rhs, goal, theta)
-            if rhs_unify_try is not None:
-                # some successful unification was obtained
-                if lhs != []:
-                    # checking for and declaring parent for '&'
-                    if lhs.op == '&&':
-                        substituted_lhs_args = [substitute(rhs_unify_try, arg) for arg in lhs.args]
-                        parent_clauses[substitute(rhs_unify_try, lhs)] = (substituted_lhs_args, 'Rule of conjunction', None)
-                    # actually we're supposed to substitute for the rhs
-                    # but this will anyway be the goal, so we can go with goal as the child
-                    # instead of substitute(rhs, rhs_unify_try)
-                    parent_clauses[goal] = ([substitute(rhs_unify_try, rule)], 'Modus Ponens', None)
-                    parent_clauses[substitute(rhs_unify_try, rule)] = ([substitute(rhs_unify_try, lhs)], 'Rule of universal instantiation', rule)
-            # lhs goes to fol_bc_AND because ALL clauses in the lhs needs to be proved
-            for theta1 in fol_bc_and(kb, lhs, rhs_unify_try):
-                yield theta1
-
+        lhs, rhs = convert_to_implication(stdized_rule)
+        rhs_unify_try = unify(rhs, goal, theta)
+        if rhs_unify_try is not None:
+            # some successful unification was obtained
+            if lhs != []:
+                # checking for and declaring parent for '&'
+                if lhs.op == '&&':
+                    substituted_lhs_args = [substitute(rhs_unify_try, arg) for arg in lhs.args]
+                    parent_clauses[substitute(rhs_unify_try, lhs)] = (substituted_lhs_args, 'Rule of conjunction', None)
+                # actually we're supposed to substitute for the rhs
+                # but this will anyway be the goal, so we can go with goal as the child
+                # instead of substitute(rhs, rhs_unify_try)
+                parent_clauses[goal] = ([substitute(rhs_unify_try, stdized_rule)], 'Modus Ponens', None)
+                parent_clauses[substitute(rhs_unify_try, stdized_rule)] = ([substitute(rhs_unify_try, lhs)], 'Rule of universal instantiation', rule)
+        # lhs goes to fol_bc_AND because ALL clauses in the lhs needs to be proved
+        for theta1 in fol_bc_and(kb, lhs, rhs_unify_try):
+            yield theta1
 #______________________________________________________________________________
 
 def fol_bc_ask(kb, query):
     # simple one-liner.
+    print 'ASK:  ', query
     return fol_bc_or(kb, query, {})
 
 
@@ -467,6 +465,7 @@ def pre_parse_facts(fact):
     fact = fact.replace('(', ' ( ')
     fact = fact.replace(')', ' ) ')
     fact = fact.replace(', ', ' ')
+    fact = fact.replace('~', '~ ')
     fact_list = fact.split()
     fact_list = parse_facts(fact_list)
     return fact_list
@@ -684,14 +683,104 @@ def standardize_vbls(clause, already_stdized = None):
         # simply create a new clause mapping the same function to all the args
         return Clause(clause.op, (standardize_vbls(arg, already_stdized) for arg in clause.args))
 
-def main():
-    file_name = sys.argv[2]
-    i_KB, query_input = process_input(file_name)
+def negate(clause):
+    """
+    A function that negates the given clause. 'clause' is an object of type
+    clause
+    """
+    if clause.op not in OPERATORS:
+        # means a clause like 'P' or 'Has'...
+        if clause.args == []:
+            # simple clause like 'P'
+            return Clause('~', [clause.op])
+        else:
+            # clause like ['Has', ['Aashish', 'Chocolate']]
+            # in that case 'Has' will be the op and rest the arguments
+            # of the clause in the '~' "level"
+            return Clause('~', [Clause(clause.op, clause.args)])
+    else:
+        # this case is very easy
+        # we can just return the argument of the not clause, because THAT'S
+        # what is being negated!!
+        return clause.args[0]   # there will only be one argument
 
-    # i_KB = process_input('sample01.txt')
+
+
+def break_nesting(clause):
+
+    """
+    Breaks the nesting of clauses and converts them into their equivalent
+    "no-brackets" representation.
+    Helper function to enable us to count the number of positive and negative
+    disjuncts for helping with is_definite_clause()
+    """
+
+    # there is nesting to be broken if the symbol is either
+    # an implication, or a not and the operator of the argument's not
+    # is a logical symbol
+
+    if clause.op == '=>':
+        # expand P ==> Q as ~P | Q
+        negated_precedent = negate(clause.args[0]) # this is ~P
+        # break the nesting of ~P
+        broken_negated_precedent = break_nesting(negated_precedent)
+        return Clause('|', [broken_negated_precedent, clause.args[1]])
+    elif clause.op == '~':
+        # only continue breaking nesting if the operator of the not clause's
+        # argument is a logical operator
+        if clause.args[0].op in OPERATORS:
+            # expand
+            negated_not_clause = negate(clause.args[0])
+            broken_negated_not_clause = break_nesting(negated_not_clause)
+            return broken_negated_not_clause
+        else:
+            # just keep the whole thing as it is
+            # we want the ~P etc. to stay as they are so we can count
+            # the number of negative and positive literals
+            return clause
+    elif clause.op in ['&&']:
+        # break the nesting of their arguments and return them as themselves
+        broken_first_arg = break_nesting(clause.args[0])
+        broken_second_arg = break_nesting(clause.args[1])
+        return Clause(clause.op, [broken_first_arg, broken_second_arg])
+    else:
+        # simple propositions such as 'P' or 'Loves(Aashish, Chocolate)'
+        # send back straight away, nothing to do
+        return clause
+
+
+def convert_to_implication(clause):
+
+    """
+    Converts clause to a form lhs => rhs for further processing by fol_bc_or.
+    """
+
+    if clause.op == '=>':
+        # the idea is that in lhs => rhs, lhs must be returned as a conjunction of literals.
+        # only then can fol_bc_and get each of those conjuncts to prove
+        # for this we simply break the nesting of the lhs
+        return break_nesting(clause.args[0]), clause.args[1]
+    else:
+        return [], clause
+
+def main():
+    global fact_list
+    # file_name = sys.argv[2]
+    # i_KB, query_input = process_input(file_name)
+
+    i_KB, query_input = process_input('sample01.txt')
     print "Final KB\n\n\n"
     for k, v in i_KB.clauses.items():
-        print k, ': ', v
+        print k, ': ', str(len(v))
+        print v
+        # print "Break_nesting"
+        # print convert_to_implication(v)
+
+    # print "Final FACT LIST\n\n\n"
+    # for i in fact_list:
+    #     print i
+
+
 
     query, reqd_theta = replace_with_variables(query_input)
 
@@ -700,16 +789,21 @@ def main():
     vbls_in_query = find_variables(query)
     print query
     for answer in i_KB.ask(query):
+        print "Inside For"
+        print 'Proof:\n\n'
+        print_parent(answer, query)
         # comment the below part out if you're using the program as a query-based system
-        if all(reqd_theta[key] == answer[key] for key in reqd_theta.keys()):
-            # all keys match
-            print '\nProof:\n'
-            print_parent(answer, query)
-            proof_flag = True
-            break
+        # if all(reqd_theta[key] == answer[key] for key in reqd_theta.keys()):
+        #     # all keys match
+        #     print '\nProof:\n'
+        #     print_parent(answer, query)
+        #     proof_flag = True
+        #     break
         # uncomment this and run to see all proofs obtained by the query-based system
-    ##    print '\nProof:\n'
-    ##    print_parent(answer, query)
+
+
+
+    # print parent_clauses
 
     if not proof_flag:
         print '\nSorry, your statement could not be proved.\n'
@@ -718,7 +812,7 @@ def main():
 
 
 
-        # process_input('sample01.txt')
+    #     # process_input('sample01.txt')
 
 
 if __name__ == '__main__':
