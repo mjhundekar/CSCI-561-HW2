@@ -68,8 +68,6 @@ class KnowledgeBase:
             else:
                 # create a new entry
                 self.clauses[inside_clause.op] = [main_clause]
-        # elif inside_clause.op == '~':
-        #     self.predicate_index(main_clause, inside_clause.args[0])
         else:
             # one of the other operators
             # add both its arguments to the dictionary
@@ -108,10 +106,8 @@ class Clause:
         self.parents = parents
         self.args = map(convert_to_clause, args)
 
-
     def __hash__(self):
         return hash(self.op) ^ hash(tuple(self.args))
-
 
     def __repr__(self):
         if len(self.args) == 0:
@@ -124,13 +120,6 @@ class Clause:
             for arg in self.args[1:]:
                 args = args + ', ' + str(arg)
             return self.op + '(' + args + ')'
-        elif self.op == '~':
-            if self.args[0].op not in OPERATORS:
-                # statement like ~Loves(Batman, Joker)
-                # so no need for parens after '~'
-                return '~' + str(self.args[0])
-            else:
-                return '~' + '(' + str(self.args[0]) + ')'
         else:
             # binary operator like '&', '|' or '==>'
             # check if argument clauses have logical operators
@@ -182,13 +171,6 @@ def convert_to_clause(item):
         and_clause = Clause('&&', [first_conjunct, second_conjunct])
         print and_clause
         return and_clause
-    # check for not
-    elif '~' in item:
-        # get the remaining clause and simply not it
-        not_posn = item.index('~')
-        not_clause = Clause('~', [item[not_posn + 1:]])
-        print not_clause
-        return not_clause
     elif isinstance(item, str):
         print item
         return Clause(item)
@@ -323,11 +305,11 @@ def construct_KB(input_sentences):
                     print 'Success', items[i][j]
 
 
-def is_variable(var):
-    if var.islower():
-        return True
-    else:
-        return False
+# def is_variable(var):
+#     if var.islower():
+#         return True
+#     else:
+#         return False
 
 
 def is_variable(item):
@@ -465,23 +447,22 @@ def pre_parse_facts(fact):
     fact = fact.replace('(', ' ( ')
     fact = fact.replace(')', ' ) ')
     fact = fact.replace(', ', ' ')
-    fact = fact.replace('~', '~ ')
-    fact_list = fact.split()
-    fact_list = parse_facts(fact_list)
-    return fact_list
+    fact_lst = fact.split()
+    fact_lst = parse_facts(fact_lst)
+    return fact_lst
 
 
-def parse_facts(fact_list):
-    first_token = fact_list.pop(0)
+def parse_facts(fact_lst):
+    first_token = fact_lst.pop(0)
 
     if first_token == '(':
         # start of a new expression
         new_expression = []
-        while fact_list[0] != ')':
+        while fact_lst[0] != ')':
             # keep appending values to the new expression list
-            new_expression.append(parse_facts(fact_list))
+            new_expression.append(parse_facts(fact_lst))
         # remove  the ')'
-        fact_list.pop(0)
+        fact_lst.pop(0)
         return new_expression
     else:
         # code is here means token is not the start of a new expression
@@ -579,8 +560,6 @@ def find_variables(clause):
         return [clause]
     elif is_predicate(clause):
         return clause.args
-    elif clause.op == '~':
-        return find_variables(clause.args[0])
     else:
         first_arg_vbls = find_variables(clause.args[0])
         second_arg_vbls = find_variables(clause.args[1])
@@ -588,6 +567,7 @@ def find_variables(clause):
 
 
 x_count = 0
+
 
 def replace_with_variables(clause, theta = {}):
 
@@ -683,28 +663,6 @@ def standardize_vbls(clause, already_stdized = None):
         # simply create a new clause mapping the same function to all the args
         return Clause(clause.op, (standardize_vbls(arg, already_stdized) for arg in clause.args))
 
-def negate(clause):
-    """
-    A function that negates the given clause. 'clause' is an object of type
-    clause
-    """
-    if clause.op not in OPERATORS:
-        # means a clause like 'P' or 'Has'...
-        if clause.args == []:
-            # simple clause like 'P'
-            return Clause('~', [clause.op])
-        else:
-            # clause like ['Has', ['Aashish', 'Chocolate']]
-            # in that case 'Has' will be the op and rest the arguments
-            # of the clause in the '~' "level"
-            return Clause('~', [Clause(clause.op, clause.args)])
-    else:
-        # this case is very easy
-        # we can just return the argument of the not clause, because THAT'S
-        # what is being negated!!
-        return clause.args[0]   # there will only be one argument
-
-
 
 def break_nesting(clause):
 
@@ -718,27 +676,7 @@ def break_nesting(clause):
     # there is nesting to be broken if the symbol is either
     # an implication, or a not and the operator of the argument's not
     # is a logical symbol
-
-    if clause.op == '=>':
-        # expand P ==> Q as ~P | Q
-        negated_precedent = negate(clause.args[0]) # this is ~P
-        # break the nesting of ~P
-        broken_negated_precedent = break_nesting(negated_precedent)
-        return Clause('|', [broken_negated_precedent, clause.args[1]])
-    elif clause.op == '~':
-        # only continue breaking nesting if the operator of the not clause's
-        # argument is a logical operator
-        if clause.args[0].op in OPERATORS:
-            # expand
-            negated_not_clause = negate(clause.args[0])
-            broken_negated_not_clause = break_nesting(negated_not_clause)
-            return broken_negated_not_clause
-        else:
-            # just keep the whole thing as it is
-            # we want the ~P etc. to stay as they are so we can count
-            # the number of negative and positive literals
-            return clause
-    elif clause.op in ['&&']:
+    if clause.op in ['&&']:
         # break the nesting of their arguments and return them as themselves
         broken_first_arg = break_nesting(clause.args[0])
         broken_second_arg = break_nesting(clause.args[1])
